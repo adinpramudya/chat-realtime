@@ -13,50 +13,45 @@ class Chat extends Component
     public $message = '';
     public $messages = [];
 
-    public function mount()
-    {
+   public function mount()
+   {
+        $this->loadMessages();
         $this->markMessagesAsRead();
-    }
-
-    public function hydrate()
-    {
-           $this->markMessagesAsRead();
-    }
+   }
+   public function hydrate()
+   {
+       $this->loadMessages();
+       $this->markMessagesAsRead();
+   }
+   protected function loadMessages()
+   {
+       $this->messages = Message::where(function ($query) {
+           $query->where('from_user_id', auth()->id())
+               ->orWhere('to_user_id', $this->user->id);
+       })
+           ->orWhere(function($query) {
+               $query->where('from_user_id', $this->user->id)
+                   ->where('to_user_id', auth()->id());
+           })->get();
+   }
 
     protected function markMessagesAsRead()
     {
-        foreach ($this->messages as $message) {
-            if ($message->to_user_id == auth()->id() && $message->status == 'unread') {
-                \Log::info("Marking message {$message->id} as read.");
-                $this->markAsRead($message->id);
-            }
-        }
+        $updatedRows = Message::where('to_user_id', auth()->id())
+            ->where('from_user_id', $this->user->id)
+            ->where('status', 'sent')
+            ->update(['status' => 'read']);
+
+        $toUserId = auth()->id();
+        $fromUserId = $this->user->id;
+
+        \Log::info("Updated {$updatedRows} messages to 'read' status.");
+        \Log::info("to user id {$toUserId}");
+        \Log::info("from user id {$fromUserId}");
+
+//        ('from user id ', 2)
     }
 
-public function markAsRead($messageId)
-{
-    $message = Message::find($messageId);
-    if ($message && $message->to_user_id == auth()->id() && $message->status == 'unread') {
-        \Log::info("Updating message {$messageId} status to 'read'.");
-        $message->update(['status' => 'read']);
-        \Log::info("Message {$messageId} status updated to: " . $message->status);
-        $this->dispatchBrowserEvent('message-read', ['messageId' => $messageId]);
-    } else {
-        \Log::info("Message {$messageId} not updated, either not found or status is not 'unread'.");
-    }
-}
-   public function render()
-{
-    $this->messages = Message::where('from_user_id', auth()->id())
-        ->orWhere('from_user_id', $this->user->id)
-        ->orWhere('to_user_id', auth()->id())
-        ->orWhere('to_user_id', $this->user->id)
-        ->get();
-    \Log::info("Messages: " . count($this->messages));
-    return view('livewire.chat', [
-        'messages' => $this->messages,
-    ]);
-}
     public function sendMessage()
     {
         $message = Message::create([
@@ -72,5 +67,11 @@ public function markAsRead($messageId)
         $this->reset('message');
     }
 
+    public function render()
+    {
+        return view('livewire.chat', [
+            'messages' => $this->messages,
+        ]);
+    }
 
 }
